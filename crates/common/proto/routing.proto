@@ -1,0 +1,256 @@
+syntax = "proto3";
+
+package voip.routing;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "common.proto";
+
+// Routing Service - intelligent call routing engine
+service RoutingService {
+  // Find route for a call
+  rpc FindRoute(FindRouteRequest) returns (FindRouteResponse);
+
+  // Create routing rule
+  rpc CreateRule(CreateRuleRequest) returns (CreateRuleResponse);
+
+  // Update routing rule
+  rpc UpdateRule(UpdateRuleRequest) returns (UpdateRuleResponse);
+
+  // Delete routing rule
+  rpc DeleteRule(DeleteRuleRequest) returns (DeleteRuleResponse);
+
+  // List routing rules
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+
+  // Test routing logic
+  rpc TestRoute(TestRouteRequest) returns (TestRouteResponse);
+
+  // Get routing statistics
+  rpc GetRoutingStats(GetRoutingStatsRequest) returns (GetRoutingStatsResponse);
+}
+
+message FindRouteRequest {
+  voip.common.SipUri from = 1;
+  voip.common.SipUri to = 2;
+  google.protobuf.Timestamp call_time = 3;
+  map<string, string> context = 4;
+  string correlation_id = 5;
+}
+
+message FindRouteResponse {
+  bool found = 1;
+  Route route = 2;
+  repeated Route fallback_routes = 3;
+  string decision_reason = 4;
+  voip.common.Error error = 5;
+}
+
+message Route {
+  string id = 1;
+  string name = 2;
+  RouteType type = 3;
+  repeated Destination destinations = 4;
+  RoutingStrategy strategy = 5;
+  uint32 priority = 6;
+  bool enabled = 7;
+  map<string, string> metadata = 8;
+}
+
+enum RouteType {
+  TYPE_UNKNOWN = 0;
+  TYPE_USER = 1;         // Route to specific user
+  TYPE_QUEUE = 2;        // Route to queue/ACD
+  TYPE_TRUNK = 3;        // Route to external trunk
+  TYPE_IVR = 4;          // Route to IVR
+  TYPE_VOICEMAIL = 5;    // Route to voicemail
+  TYPE_CONFERENCE = 6;   // Route to conference
+}
+
+message Destination {
+  string id = 1;
+  oneof target {
+    voip.common.SipUri uri = 2;
+    string queue_id = 3;
+    string trunk_id = 4;
+    string ivr_id = 5;
+  }
+  uint32 weight = 6;  // For weighted routing
+  uint32 priority = 7;
+  bool available = 8;
+}
+
+enum RoutingStrategy {
+  STRATEGY_UNKNOWN = 0;
+  STRATEGY_SEQUENTIAL = 1;    // Try destinations in order
+  STRATEGY_ROUND_ROBIN = 2;   // Distribute evenly
+  STRATEGY_LEAST_USED = 3;    // Route to least busy
+  STRATEGY_WEIGHTED = 4;      // Use destination weights
+  STRATEGY_SKILL_BASED = 5;   // Match skills
+  STRATEGY_RANDOM = 6;        // Random selection
+  STRATEGY_STICKY = 7;        // Same as previous
+}
+
+message CreateRuleRequest {
+  RoutingRule rule = 1;
+}
+
+message CreateRuleResponse {
+  bool success = 1;
+  string rule_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateRuleRequest {
+  string rule_id = 1;
+  RoutingRule rule = 2;
+}
+
+message UpdateRuleResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteRuleRequest {
+  string rule_id = 1;
+}
+
+message DeleteRuleResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message RoutingRule {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated Condition conditions = 4;
+  repeated Action actions = 5;
+  uint32 priority = 6;
+  bool enabled = 7;
+  Schedule schedule = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message Condition {
+  ConditionType type = 1;
+  string field = 2;
+  Operator operator = 3;
+  string value = 4;
+  repeated Condition and_conditions = 5;
+  repeated Condition or_conditions = 6;
+}
+
+enum ConditionType {
+  CONDITION_UNKNOWN = 0;
+  CONDITION_TIME = 1;
+  CONDITION_CALLER = 2;
+  CONDITION_CALLEE = 3;
+  CONDITION_HEADER = 4;
+  CONDITION_CONTEXT = 5;
+}
+
+enum Operator {
+  OPERATOR_UNKNOWN = 0;
+  OPERATOR_EQUALS = 1;
+  OPERATOR_NOT_EQUALS = 2;
+  OPERATOR_CONTAINS = 3;
+  OPERATOR_STARTS_WITH = 4;
+  OPERATOR_ENDS_WITH = 5;
+  OPERATOR_REGEX = 6;
+  OPERATOR_IN = 7;
+  OPERATOR_NOT_IN = 8;
+  OPERATOR_GREATER = 9;
+  OPERATOR_LESS = 10;
+}
+
+message Action {
+  ActionType type = 1;
+  map<string, string> parameters = 2;
+}
+
+enum ActionType {
+  ACTION_UNKNOWN = 0;
+  ACTION_ROUTE = 1;
+  ACTION_REJECT = 2;
+  ACTION_TRANSFORM = 3;
+  ACTION_SET_HEADER = 4;
+  ACTION_LOG = 5;
+  ACTION_NOTIFY = 6;
+}
+
+message Schedule {
+  repeated TimeRange time_ranges = 1;
+  repeated string days_of_week = 2;  // MON, TUE, WED, etc.
+  repeated Holiday holidays = 3;
+  string timezone = 4;
+}
+
+message TimeRange {
+  string start_time = 1;  // HH:MM format
+  string end_time = 2;    // HH:MM format
+}
+
+message Holiday {
+  string name = 1;
+  google.protobuf.Timestamp date = 2;
+  bool recurring_yearly = 3;
+}
+
+message ListRulesRequest {
+  voip.common.PageRequest page = 1;
+  string filter_name = 2;
+  bool enabled_only = 3;
+}
+
+message ListRulesResponse {
+  repeated RoutingRule rules = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+message TestRouteRequest {
+  FindRouteRequest request = 1;
+  bool dry_run = 2;
+}
+
+message TestRouteResponse {
+  FindRouteResponse response = 1;
+  repeated RuleEvaluation evaluations = 2;
+}
+
+message RuleEvaluation {
+  string rule_id = 1;
+  string rule_name = 2;
+  bool matched = 3;
+  repeated ConditionResult condition_results = 4;
+  repeated string applied_actions = 5;
+}
+
+message ConditionResult {
+  string condition = 1;
+  bool matched = 2;
+  string reason = 3;
+}
+
+message GetRoutingStatsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  repeated string rule_ids = 3;
+}
+
+message GetRoutingStatsResponse {
+  repeated RoutingStat stats = 1;
+  voip.common.Error error = 2;
+}
+
+message RoutingStat {
+  string rule_id = 1;
+  string rule_name = 2;
+  uint64 total_evaluations = 3;
+  uint64 successful_routes = 4;
+  uint64 failed_routes = 5;
+  double average_routing_time_ms = 6;
+  map<string, uint64> destination_distribution = 7;
+}

@@ -1,0 +1,200 @@
+syntax = "proto3";
+
+package voip.media;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Media Service - handles RTP/SRTP relay and transcoding
+service MediaService {
+  // Start media relay for a call
+  rpc StartRelay(StartRelayRequest) returns (StartRelayResponse);
+
+  // Stop media relay
+  rpc StopRelay(StopRelayRequest) returns (StopRelayResponse);
+
+  // Update media parameters (codec change, hold/resume)
+  rpc UpdateMedia(UpdateMediaRequest) returns (UpdateMediaResponse);
+
+  // Get media statistics
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+
+  // Start recording
+  rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
+
+  // Stop recording
+  rpc StopRecording(StopRecordingRequest) returns (StopRecordingResponse);
+
+  // Stream media events
+  rpc StreamEvents(StreamEventsRequest) returns (stream MediaEvent);
+}
+
+message StartRelayRequest {
+  voip.common.CallId call_id = 1;
+  string local_sdp = 2;
+  string remote_sdp = 3;
+  bool enable_srtp = 4;
+  bool enable_recording = 5;
+}
+
+message StartRelayResponse {
+  bool success = 1;
+  string relay_id = 2;
+  string negotiated_sdp = 3;
+  MediaEndpoint local_endpoint = 4;
+  MediaEndpoint remote_endpoint = 5;
+  voip.common.Error error = 6;
+}
+
+message MediaEndpoint {
+  string ip = 1;
+  uint32 rtp_port = 2;
+  uint32 rtcp_port = 3;
+  repeated voip.common.Codec codecs = 4;
+}
+
+message StopRelayRequest {
+  string relay_id = 1;
+  string reason = 2;
+}
+
+message StopRelayResponse {
+  bool success = 1;
+  MediaStats final_stats = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateMediaRequest {
+  string relay_id = 1;
+  oneof update {
+    string new_sdp = 2;
+    bool hold = 3;
+    bool resume = 4;
+    voip.common.Codec new_codec = 5;
+  }
+}
+
+message UpdateMediaResponse {
+  bool success = 1;
+  string negotiated_sdp = 2;
+  voip.common.Error error = 3;
+}
+
+message GetStatsRequest {
+  string relay_id = 1;
+}
+
+message GetStatsResponse {
+  MediaStats stats = 1;
+  voip.common.Error error = 2;
+}
+
+message MediaStats {
+  voip.common.QosMetrics inbound = 1;
+  voip.common.QosMetrics outbound = 2;
+  google.protobuf.Timestamp started_at = 3;
+  uint64 duration_ms = 4;
+  repeated CodecUsage codec_usage = 5;
+}
+
+message CodecUsage {
+  voip.common.Codec codec = 1;
+  uint64 packets = 2;
+  uint64 bytes = 3;
+  uint32 usage_percent = 4;
+}
+
+message StartRecordingRequest {
+  string relay_id = 1;
+  RecordingFormat format = 2;
+  RecordingOptions options = 3;
+}
+
+message StartRecordingResponse {
+  bool success = 1;
+  string recording_id = 2;
+  string file_path = 3;
+  voip.common.Error error = 4;
+}
+
+message StopRecordingRequest {
+  string recording_id = 1;
+}
+
+message StopRecordingResponse {
+  bool success = 1;
+  RecordingInfo info = 2;
+  voip.common.Error error = 3;
+}
+
+message RecordingInfo {
+  string recording_id = 1;
+  string file_path = 2;
+  uint64 file_size = 3;
+  uint64 duration_ms = 4;
+  RecordingFormat format = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp stopped_at = 7;
+}
+
+enum RecordingFormat {
+  FORMAT_UNKNOWN = 0;
+  FORMAT_WAV = 1;
+  FORMAT_MP3 = 2;
+  FORMAT_OGG = 3;
+  FORMAT_WEBM = 4;
+}
+
+message RecordingOptions {
+  bool mixed = 1;  // Mix both channels or separate
+  uint32 sample_rate = 2;
+  uint32 bitrate = 3;
+  map<string, string> metadata = 4;
+}
+
+message StreamEventsRequest {
+  repeated string relay_ids = 1;
+  repeated MediaEventType event_types = 2;
+}
+
+message MediaEvent {
+  string relay_id = 1;
+  MediaEventType type = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  oneof event {
+    PacketLossEvent packet_loss = 4;
+    JitterEvent jitter = 5;
+    CodecChangeEvent codec_change = 6;
+    StreamInterruptionEvent interruption = 7;
+  }
+}
+
+enum MediaEventType {
+  EVENT_UNKNOWN = 0;
+  EVENT_PACKET_LOSS = 1;
+  EVENT_HIGH_JITTER = 2;
+  EVENT_CODEC_CHANGE = 3;
+  EVENT_STREAM_INTERRUPTION = 4;
+  EVENT_STREAM_RESUMED = 5;
+}
+
+message PacketLossEvent {
+  float loss_percent = 1;
+  uint32 lost_packets = 2;
+}
+
+message JitterEvent {
+  float jitter_ms = 1;
+  float max_jitter_ms = 2;
+}
+
+message CodecChangeEvent {
+  voip.common.Codec old_codec = 1;
+  voip.common.Codec new_codec = 2;
+  string reason = 3;
+}
+
+message StreamInterruptionEvent {
+  uint64 duration_ms = 1;
+  string reason = 2;
+}

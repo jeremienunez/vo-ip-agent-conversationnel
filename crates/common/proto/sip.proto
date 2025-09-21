@@ -1,0 +1,250 @@
+syntax = "proto3";
+
+package voip.sip;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "common.proto";
+
+// SIP Service - handles SIP signaling
+service SipService {
+  // Register a SIP endpoint
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Unregister a SIP endpoint
+  rpc Unregister(UnregisterRequest) returns (UnregisterResponse);
+
+  // Initiate a call
+  rpc Invite(InviteRequest) returns (stream InviteEvent);
+
+  // Answer a call
+  rpc Answer(AnswerRequest) returns (AnswerResponse);
+
+  // Terminate a call
+  rpc Bye(ByeRequest) returns (ByeResponse);
+
+  // Cancel a pending call
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+
+  // Transfer a call
+  rpc Transfer(TransferRequest) returns (TransferResponse);
+
+  // Hold/Resume a call
+  rpc Hold(HoldRequest) returns (HoldResponse);
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
+
+  // Get active registrations
+  rpc ListRegistrations(ListRegistrationsRequest) returns (ListRegistrationsResponse);
+
+  // Get active calls
+  rpc ListCalls(ListCallsRequest) returns (ListCallsResponse);
+
+  // Subscribe to SIP events
+  rpc Subscribe(SubscribeRequest) returns (stream SipEvent);
+}
+
+// Registration management
+message RegisterRequest {
+  voip.common.SipUri uri = 1;
+  string contact = 2;
+  uint32 expires = 3;
+  string auth_token = 4;
+  map<string, string> headers = 5;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string registration_id = 2;
+  uint32 expires = 3;
+  voip.common.Error error = 4;
+}
+
+message UnregisterRequest {
+  string registration_id = 1;
+}
+
+message UnregisterResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+// Call management
+message InviteRequest {
+  voip.common.SipUri from = 1;
+  voip.common.SipUri to = 2;
+  string sdp_offer = 3;
+  map<string, string> headers = 4;
+  string correlation_id = 5;
+}
+
+message InviteEvent {
+  oneof event {
+    InviteProgress progress = 1;
+    InviteRinging ringing = 2;
+    InviteAnswer answer = 3;
+    InviteFailed failed = 4;
+  }
+  voip.common.CallId call_id = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+message InviteProgress {
+  string message = 1;
+  uint32 code = 2;
+}
+
+message InviteRinging {
+  string sdp_answer = 1;
+}
+
+message InviteAnswer {
+  string sdp_answer = 1;
+  repeated voip.common.Codec codecs = 2;
+}
+
+message InviteFailed {
+  uint32 sip_code = 1;
+  string reason = 2;
+}
+
+message AnswerRequest {
+  voip.common.CallId call_id = 1;
+  string sdp_answer = 2;
+}
+
+message AnswerResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message ByeRequest {
+  voip.common.CallId call_id = 1;
+  string reason = 2;
+}
+
+message ByeResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message CancelRequest {
+  voip.common.CallId call_id = 1;
+  string reason = 2;
+}
+
+message CancelResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message TransferRequest {
+  voip.common.CallId call_id = 1;
+  voip.common.SipUri transfer_to = 2;
+  bool attended = 3;
+}
+
+message TransferResponse {
+  bool success = 1;
+  string new_call_id = 2;
+  voip.common.Error error = 3;
+}
+
+message HoldRequest {
+  voip.common.CallId call_id = 1;
+}
+
+message HoldResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message ResumeRequest {
+  voip.common.CallId call_id = 1;
+}
+
+message ResumeResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+// Listing and monitoring
+message ListRegistrationsRequest {
+  voip.common.PageRequest page = 1;
+  string filter_domain = 2;
+  string filter_user = 3;
+}
+
+message ListRegistrationsResponse {
+  repeated Registration registrations = 1;
+  voip.common.PageInfo page_info = 2;
+}
+
+message Registration {
+  string id = 1;
+  voip.common.SipUri uri = 2;
+  string contact = 3;
+  google.protobuf.Timestamp registered_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string user_agent = 6;
+  string source_ip = 7;
+}
+
+message ListCallsRequest {
+  voip.common.PageRequest page = 1;
+  CallState filter_state = 2;
+  string filter_user = 3;
+}
+
+message ListCallsResponse {
+  repeated Call calls = 1;
+  voip.common.PageInfo page_info = 2;
+}
+
+message Call {
+  voip.common.CallId call_id = 1;
+  voip.common.SipUri from = 2;
+  voip.common.SipUri to = 3;
+  CallState state = 4;
+  CallDirection direction = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp answered_at = 7;
+  google.protobuf.Duration duration = 8;
+  repeated voip.common.Codec codecs = 9;
+  voip.common.QosMetrics qos = 10;
+}
+
+enum CallState {
+  STATE_UNKNOWN = 0;
+  STATE_INITIATING = 1;
+  STATE_RINGING = 2;
+  STATE_ANSWERED = 3;
+  STATE_HELD = 4;
+  STATE_TRANSFERRING = 5;
+  STATE_TERMINATED = 6;
+  STATE_FAILED = 7;
+}
+
+enum CallDirection {
+  DIRECTION_UNKNOWN = 0;
+  DIRECTION_INBOUND = 1;
+  DIRECTION_OUTBOUND = 2;
+}
+
+// Event subscription
+message SubscribeRequest {
+  repeated EventFilter filters = 1;
+}
+
+message EventFilter {
+  repeated voip.common.EventType event_types = 1;
+  repeated string user_filters = 2;
+  repeated string domain_filters = 3;
+}
+
+message SipEvent {
+  voip.common.Event event = 1;
+  oneof payload {
+    Registration registration = 2;
+    Call call = 3;
+  }
+}

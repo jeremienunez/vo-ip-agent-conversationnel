@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package voip.auth;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Authentication and Authorization Service
+service AuthService {
+  // Authenticate user credentials
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+
+  // Refresh access token
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  // Validate token
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Revoke token
+  rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse);
+
+  // Check permissions
+  rpc CheckPermissions(CheckPermissionsRequest) returns (CheckPermissionsResponse);
+
+  // Create API key
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+
+  // List API keys
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+
+  // Revoke API key
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+}
+
+message AuthenticateRequest {
+  oneof credentials {
+    PasswordCredentials password = 1;
+    ApiKeyCredentials api_key = 2;
+    OAuthCredentials oauth = 3;
+  }
+  map<string, string> metadata = 4;
+}
+
+message PasswordCredentials {
+  string username = 1;
+  string password = 2;
+  string totp_code = 3;  // Optional TOTP for 2FA
+}
+
+message ApiKeyCredentials {
+  string api_key = 1;
+  string api_secret = 2;
+}
+
+message OAuthCredentials {
+  string provider = 1;
+  string access_token = 2;
+}
+
+message AuthenticateResponse {
+  bool success = 1;
+  AuthToken token = 2;
+  User user = 3;
+  voip.common.Error error = 4;
+}
+
+message AuthToken {
+  string access_token = 1;
+  string refresh_token = 2;
+  string token_type = 3;
+  uint32 expires_in = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  repeated string scopes = 6;
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+  string email = 3;
+  string name = 4;
+  Role role = 5;
+  repeated string permissions = 6;
+  map<string, string> attributes = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp last_login = 9;
+  bool enabled = 10;
+}
+
+enum Role {
+  ROLE_UNKNOWN = 0;
+  ROLE_USER = 1;
+  ROLE_AGENT = 2;
+  ROLE_SUPERVISOR = 3;
+  ROLE_ADMIN = 4;
+  ROLE_SUPER_ADMIN = 5;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  bool success = 1;
+  AuthToken token = 2;
+  voip.common.Error error = 3;
+}
+
+message ValidateTokenRequest {
+  string access_token = 1;
+  repeated string required_scopes = 2;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  User user = 2;
+  TokenInfo info = 3;
+  voip.common.Error error = 4;
+}
+
+message TokenInfo {
+  string token_id = 1;
+  string user_id = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp issued_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string issuer = 6;
+}
+
+message RevokeTokenRequest {
+  string access_token = 1;
+  string reason = 2;
+}
+
+message RevokeTokenResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message CheckPermissionsRequest {
+  string user_id = 1;
+  string resource = 2;
+  string action = 3;
+  map<string, string> context = 4;
+}
+
+message CheckPermissionsResponse {
+  bool allowed = 1;
+  string reason = 2;
+  repeated string required_permissions = 3;
+  repeated string user_permissions = 4;
+  voip.common.Error error = 5;
+}
+
+message CreateApiKeyRequest {
+  string name = 1;
+  string description = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message CreateApiKeyResponse {
+  bool success = 1;
+  ApiKey api_key = 2;
+  string api_secret = 3;  // Only returned on creation
+  voip.common.Error error = 4;
+}
+
+message ApiKey {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string key_prefix = 4;  // First 8 chars for identification
+  repeated string scopes = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp last_used = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  bool enabled = 9;
+}
+
+message ListApiKeysRequest {
+  string user_id = 1;
+  voip.common.PageRequest page = 2;
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey keys = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+message RevokeApiKeyRequest {
+  string api_key_id = 1;
+  string reason = 2;
+}
+
+message RevokeApiKeyResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}

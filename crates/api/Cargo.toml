@@ -1,0 +1,17 @@
+[package]
+name = "voip-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { workspace = true, features = ["macros"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+voip-common = { path = "../common" }
+
+[dev-dependencies]
+http = "0.2"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tower = { version = "0.4", features = ["util"] }

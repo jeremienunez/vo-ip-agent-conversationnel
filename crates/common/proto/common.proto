@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package voip.common;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// Common error response
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// Pagination request
+message PageRequest {
+  uint32 page = 1;
+  uint32 page_size = 2;
+  string sort_by = 3;
+  bool descending = 4;
+}
+
+// Pagination response metadata
+message PageInfo {
+  uint32 page = 1;
+  uint32 page_size = 2;
+  uint32 total_pages = 3;
+  uint64 total_items = 4;
+  bool has_next = 5;
+  bool has_previous = 6;
+}
+
+// Call identifier
+message CallId {
+  string id = 1;
+  string sip_call_id = 2;
+  string correlation_id = 3;
+}
+
+// SIP URI
+message SipUri {
+  string user = 1;
+  string domain = 2;
+  uint32 port = 3;
+  map<string, string> params = 4;
+}
+
+// Media codec information
+message Codec {
+  string name = 1;
+  uint32 payload_type = 2;
+  uint32 sample_rate = 3;
+  uint32 channels = 4;
+  map<string, string> parameters = 5;
+}
+
+// QoS metrics
+message QosMetrics {
+  double jitter_ms = 1;
+  double packet_loss_percent = 2;
+  double rtt_ms = 3;
+  double mos = 4;  // Mean Opinion Score
+  uint64 packets_sent = 5;
+  uint64 packets_received = 6;
+  uint64 bytes_sent = 7;
+  uint64 bytes_received = 8;
+}
+
+// Service health status
+enum HealthStatus {
+  UNKNOWN = 0;
+  HEALTHY = 1;
+  DEGRADED = 2;
+  UNHEALTHY = 3;
+  CRITICAL = 4;
+}
+
+// Service info
+message ServiceInfo {
+  string name = 1;
+  string version = 2;
+  string instance_id = 3;
+  HealthStatus status = 4;
+  google.protobuf.Timestamp started_at = 5;
+  map<string, string> metadata = 6;
+}
+
+// Event types
+enum EventType {
+  EVENT_UNKNOWN = 0;
+
+  // Call events
+  CALL_STARTED = 100;
+  CALL_ANSWERED = 101;
+  CALL_ENDED = 102;
+  CALL_FAILED = 103;
+  CALL_TRANSFERRED = 104;
+  CALL_HELD = 105;
+  CALL_RESUMED = 106;
+
+  // Registration events
+  REGISTRATION_SUCCESS = 200;
+  REGISTRATION_FAILED = 201;
+  REGISTRATION_EXPIRED = 202;
+
+  // Media events
+  MEDIA_STARTED = 300;
+  MEDIA_STOPPED = 301;
+  MEDIA_CODEC_CHANGED = 302;
+
+  // System events
+  SERVICE_STARTED = 400;
+  SERVICE_STOPPED = 401;
+  SERVICE_ERROR = 402;
+}
+
+// Generic event
+message Event {
+  string id = 1;
+  EventType type = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string service = 4;
+  string correlation_id = 5;
+  map<string, string> metadata = 6;
+  bytes payload = 7;  // Serialized event-specific data
+}

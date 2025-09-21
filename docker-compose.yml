@@ -1,0 +1,422 @@
+version: '3.9'
+
+x-common-variables: &common-variables
+  ENVIRONMENT: development
+  RUST_LOG: info
+  RUST_BACKTRACE: 1
+  OTLP_ENDPOINT: http://tempo:4317
+  NATS_URL: nats://nats:4222
+  REDIS_URL: redis://redis:6379
+  CONSUL_ADDR: http://consul:8500
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+services:
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================
+
+  # PostgreSQL - Primary Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: voip-postgres
+    environment:
+      POSTGRES_DB: voip
+      POSTGRES_USER: voip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voip_secret}
+      POSTGRES_INIT
+
+DB_ENCODING: UTF8
+      POSTGRES_INIT_DB_ARGS: --auth-local=md5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U voip"]
+    networks:
+      - voip-network
+
+  # Redis - Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: voip-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_secret}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "redis-cli", "ping"]
+    networks:
+      - voip-network
+
+  # NATS - Message Queue & Event Bus
+  nats:
+    image: nats:2.10-alpine
+    container_name: voip-nats
+    command: |
+      -js
+      -sd /data
+      -m 8222
+      --auth ${NATS_TOKEN:-nats_secret}
+      --max_payload 4MB
+    volumes:
+      - nats_data:/data
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+      - "6222:6222"  # Cluster routing
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+    networks:
+      - voip-network
+
+  # Consul - Service Discovery
+  consul:
+    image: consul:1.19
+    container_name: voip-consul
+    command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+      CONSUL_CLIENT_INTERFACE: eth0
+    volumes:
+      - consul_data:/consul/data
+    ports:
+      - "8500:8500"  # HTTP API & UI
+      - "8600:8600/udp"  # DNS
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "consul", "members"]
+    networks:
+      - voip-network
+
+  # Kong - API Gateway
+  kong-database:
+    image: postgres:16-alpine
+    container_name: voip-kong-db
+    environment:
+      POSTGRES_DB: kong
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: ${KONG_DB_PASSWORD:-kong_secret}
+    volumes:
+      - kong_db_data:/var/lib/postgresql/data
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+    networks:
+      - voip-network
+
+  kong-migration:
+    image: kong:3.9
+    container_name: voip-kong-migration
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_secret}
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    networks:
+      - voip-network
+    restart: on-failure
+
+  kong:
+    image: kong:3.9
+    container_name: voip-kong
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: ${KONG_DB_PASSWORD:-kong_secret}
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_PLUGINS: bundled,prometheus,zipkin
+      KONG_TRACING_INSTRUMENTATIONS: all
+      KONG_TRACING_SAMPLING_RATE: 1.0
+    ports:
+      - "8000:8000"  # HTTP Proxy
+      - "8443:8443"  # HTTPS Proxy
+      - "8001:8001"  # Admin API
+      - "8444:8444"  # Admin API SSL
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "kong", "health"]
+    depends_on:
+      kong-migration:
+        condition: service_completed_successfully
+    networks:
+      - voip-network
+
+  # ============================================
+  # OBSERVABILITY STACK
+  # ============================================
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: voip-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+    networks:
+      - voip-network
+
+  # Grafana - Dashboards & Visualization
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: voip-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: redis-datasource,nats-datasource
+      GF_FEATURE_TOGGLES_ENABLE: traceToMetrics
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - voip-network
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:3.3.0
+    container_name: voip-loki
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./config/loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+    networks:
+      - voip-network
+
+  # Tempo - Distributed Tracing
+  tempo:
+    image: grafana/tempo:2.7.0
+    container_name: voip-tempo
+    command: [ "-config.file=/etc/tempo.yml" ]
+    volumes:
+      - ./config/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo query frontend
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3200/ready"]
+    networks:
+      - voip-network
+
+  # ============================================
+  # VOIP MICROSERVICES (To be built)
+  # ============================================
+
+  # # Gateway Service
+  # gateway:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/gateway.Dockerfile
+  #   container_name: voip-gateway
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: gateway
+  #     BIND_ADDR: 0.0.0.0:50051
+  #   ports:
+  #     - "50051:50051"
+  #   depends_on:
+  #     - consul
+  #     - nats
+  #     - redis
+  #   networks:
+  #     - voip-network
+
+  # # Auth Service
+  # auth:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/auth.Dockerfile
+  #   container_name: voip-auth
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: auth
+  #     BIND_ADDR: 0.0.0.0:50052
+  #     POSTGRES_URL: postgresql://voip:${POSTGRES_PASSWORD:-voip_secret}@postgres/voip
+  #   ports:
+  #     - "50052:50052"
+  #   depends_on:
+  #     - postgres
+  #     - consul
+  #     - nats
+  #   networks:
+  #     - voip-network
+
+  # # SIP Service
+  # sip:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/sip.Dockerfile
+  #   container_name: voip-sip
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: sip
+  #     BIND_ADDR: 0.0.0.0:50053
+  #     SIP_UDP_PORT: 5060
+  #     SIP_TCP_PORT: 5060
+  #     SIP_TLS_PORT: 5061
+  #   ports:
+  #     - "50053:50053"  # gRPC
+  #     - "5060:5060/udp"  # SIP UDP
+  #     - "5060:5060/tcp"  # SIP TCP
+  #     - "5061:5061"      # SIP TLS
+  #   depends_on:
+  #     - consul
+  #     - nats
+  #     - redis
+  #   networks:
+  #     - voip-network
+
+  # # Media Service
+  # media:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/media.Dockerfile
+  #   container_name: voip-media
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: media
+  #     BIND_ADDR: 0.0.0.0:50054
+  #     RTP_PORT_RANGE: 10000-20000
+  #   ports:
+  #     - "50054:50054"  # gRPC
+  #     - "10000-20000:10000-20000/udp"  # RTP ports
+  #   depends_on:
+  #     - consul
+  #     - nats
+  #   networks:
+  #     - voip-network
+
+  # # Routing Service
+  # routing:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/routing.Dockerfile
+  #   container_name: voip-routing
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: routing
+  #     BIND_ADDR: 0.0.0.0:50055
+  #     POSTGRES_URL: postgresql://voip:${POSTGRES_PASSWORD:-voip_secret}@postgres/voip
+  #   ports:
+  #     - "50055:50055"
+  #   depends_on:
+  #     - postgres
+  #     - consul
+  #     - nats
+  #   networks:
+  #     - voip-network
+
+  # # Provisioning Service
+  # provisioning:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/provisioning.Dockerfile
+  #   container_name: voip-provisioning
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: provisioning
+  #     BIND_ADDR: 0.0.0.0:50056
+  #     POSTGRES_URL: postgresql://voip:${POSTGRES_PASSWORD:-voip_secret}@postgres/voip
+  #   ports:
+  #     - "50056:50056"
+  #   depends_on:
+  #     - postgres
+  #     - consul
+  #     - nats
+  #   networks:
+  #     - voip-network
+
+  # # Monitoring Service
+  # monitoring:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/services/monitoring.Dockerfile
+  #   container_name: voip-monitoring
+  #   environment:
+  #     <<: *common-variables
+  #     SERVICE_NAME: monitoring
+  #     BIND_ADDR: 0.0.0.0:50057
+  #   ports:
+  #     - "50057:50057"
+  #   depends_on:
+  #     - prometheus
+  #     - loki
+  #     - tempo
+  #     - consul
+  #     - nats
+  #   networks:
+  #     - voip-network
+
+networks:
+  voip-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  nats_data:
+    driver: local
+  consul_data:
+    driver: local
+  kong_db_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  tempo_data:
+    driver: local

@@ -1,0 +1,113 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+# Remove Cargo.lock from gitignore if creating an executable
+# Cargo.lock
+
+# IDE and editor files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+*.crt
+secrets/
+
+# Logs and reports
+/logs/
+*.log
+/reports/
+*.prof
+*.heaptrack
+*.valgrind
+
+# Test artifacts
+tarpaulin-report.html
+cobertura.xml
+coverage/
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# Build and CI
+/dist/
+/build/
+.cache/
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python (for scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Node (if frontend added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Project specific
+/test_api
+/test_api.rs
+*.backup
+/verify_cleanup.sh
+.claude
+
+# Docker volumes (local dev)
+/data/
+/volumes/
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+/profiling/
+
+# Core dumps
+core
+core.*
+*.core
+
+# Generated documentation
+/target/doc/
+/target/criterion/
+
+# Benchmark results
+/benches/target/
+
+# Workspace
+.cargo/config.toml
+!.cargo/config.toml.example

@@ -1,0 +1,13 @@
+[package]
+name = "voip-signalling"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+voip-common = { path = "../common" }
+
+[dev-dependencies]
+voip-common = { path = "../common" }

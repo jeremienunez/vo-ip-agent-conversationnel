@@ -1,0 +1,300 @@
+syntax = "proto3";
+
+package voip.monitoring;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "common.proto";
+
+// Monitoring Service - health checks, metrics, alerts
+service MonitoringService {
+  // Health checks
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  rpc CheckServiceHealth(CheckServiceHealthRequest) returns (CheckServiceHealthResponse);
+
+  // Metrics
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  rpc StreamMetrics(StreamMetricsRequest) returns (stream Metric);
+
+  // Alerts
+  rpc CreateAlert(CreateAlertRequest) returns (CreateAlertResponse);
+  rpc UpdateAlert(UpdateAlertRequest) returns (UpdateAlertResponse);
+  rpc DeleteAlert(DeleteAlertRequest) returns (DeleteAlertResponse);
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+  rpc AcknowledgeAlert(AcknowledgeAlertRequest) returns (AcknowledgeAlertResponse);
+
+  // Logs
+  rpc QueryLogs(QueryLogsRequest) returns (QueryLogsResponse);
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+
+  // Traces
+  rpc GetTraces(GetTracesRequest) returns (GetTracesResponse);
+  rpc GetTraceDetails(GetTraceDetailsRequest) returns (GetTraceDetailsResponse);
+}
+
+// Health Checks
+message CheckHealthRequest {
+  bool include_details = 1;
+}
+
+message CheckHealthResponse {
+  voip.common.HealthStatus overall_status = 1;
+  repeated ServiceHealth services = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message ServiceHealth {
+  voip.common.ServiceInfo service = 1;
+  voip.common.HealthStatus status = 2;
+  repeated ComponentHealth components = 3;
+  map<string, double> metrics = 4;
+}
+
+message ComponentHealth {
+  string name = 1;
+  voip.common.HealthStatus status = 2;
+  string message = 3;
+  google.protobuf.Duration response_time = 4;
+}
+
+message CheckServiceHealthRequest {
+  string service_name = 1;
+  bool deep_check = 2;
+}
+
+message CheckServiceHealthResponse {
+  ServiceHealth health = 1;
+  voip.common.Error error = 2;
+}
+
+// Metrics
+message GetMetricsRequest {
+  repeated string service_names = 1;
+  repeated string metric_names = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+  uint32 resolution_seconds = 5;
+}
+
+message GetMetricsResponse {
+  repeated Metric metrics = 1;
+  voip.common.Error error = 2;
+}
+
+message StreamMetricsRequest {
+  repeated string service_names = 1;
+  repeated string metric_names = 2;
+  uint32 interval_seconds = 3;
+}
+
+message Metric {
+  string service = 1;
+  string name = 2;
+  MetricType type = 3;
+  double value = 4;
+  map<string, string> labels = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+enum MetricType {
+  METRIC_UNKNOWN = 0;
+  METRIC_COUNTER = 1;
+  METRIC_GAUGE = 2;
+  METRIC_HISTOGRAM = 3;
+  METRIC_SUMMARY = 4;
+}
+
+// Alerts
+message Alert {
+  string id = 1;
+  string name = 2;
+  AlertSeverity severity = 3;
+  AlertStatus status = 4;
+  string service = 5;
+  string message = 6;
+  map<string, string> labels = 7;
+  google.protobuf.Timestamp triggered_at = 8;
+  google.protobuf.Timestamp resolved_at = 9;
+  repeated AlertEvent events = 10;
+}
+
+enum AlertSeverity {
+  SEVERITY_UNKNOWN = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+  SEVERITY_CRITICAL = 4;
+}
+
+enum AlertStatus {
+  ALERT_STATUS_UNKNOWN = 0;
+  ALERT_STATUS_PENDING = 1;
+  ALERT_STATUS_FIRING = 2;
+  ALERT_STATUS_RESOLVED = 3;
+  ALERT_STATUS_ACKNOWLEDGED = 4;
+  ALERT_STATUS_SILENCED = 5;
+}
+
+message AlertEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  string event = 2;
+  string user = 3;
+  string comment = 4;
+}
+
+message CreateAlertRequest {
+  Alert alert = 1;
+}
+
+message CreateAlertResponse {
+  bool success = 1;
+  string alert_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateAlertRequest {
+  string alert_id = 1;
+  Alert alert = 2;
+}
+
+message UpdateAlertResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteAlertRequest {
+  string alert_id = 1;
+}
+
+message DeleteAlertResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message ListAlertsRequest {
+  voip.common.PageRequest page = 1;
+  AlertStatus filter_status = 2;
+  AlertSeverity filter_severity = 3;
+  string filter_service = 4;
+  google.protobuf.Timestamp since = 5;
+}
+
+message ListAlertsResponse {
+  repeated Alert alerts = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+message AcknowledgeAlertRequest {
+  string alert_id = 1;
+  string user = 2;
+  string comment = 3;
+}
+
+message AcknowledgeAlertResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+// Logs
+message QueryLogsRequest {
+  repeated string services = 1;
+  repeated LogLevel levels = 2;
+  string search = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  uint32 limit = 6;
+}
+
+message QueryLogsResponse {
+  repeated LogEntry entries = 1;
+  uint64 total_count = 2;
+  voip.common.Error error = 3;
+}
+
+message StreamLogsRequest {
+  repeated string services = 1;
+  repeated LogLevel levels = 2;
+  string filter = 3;
+}
+
+message LogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string service = 2;
+  LogLevel level = 3;
+  string message = 4;
+  map<string, string> fields = 5;
+  string trace_id = 6;
+  string span_id = 7;
+}
+
+enum LogLevel {
+  LOG_UNKNOWN = 0;
+  LOG_TRACE = 1;
+  LOG_DEBUG = 2;
+  LOG_INFO = 3;
+  LOG_WARN = 4;
+  LOG_ERROR = 5;
+  LOG_FATAL = 6;
+}
+
+// Traces
+message GetTracesRequest {
+  string service = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  google.protobuf.Duration min_duration = 4;
+  google.protobuf.Duration max_duration = 5;
+  uint32 limit = 6;
+}
+
+message GetTracesResponse {
+  repeated Trace traces = 1;
+  voip.common.Error error = 2;
+}
+
+message Trace {
+  string trace_id = 1;
+  string root_span = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Duration duration = 4;
+  repeated string services = 5;
+  uint32 span_count = 6;
+  uint32 error_count = 7;
+  map<string, string> attributes = 8;
+}
+
+message GetTraceDetailsRequest {
+  string trace_id = 1;
+}
+
+message GetTraceDetailsResponse {
+  Trace trace = 1;
+  repeated Span spans = 2;
+  voip.common.Error error = 3;
+}
+
+message Span {
+  string span_id = 1;
+  string parent_span_id = 2;
+  string trace_id = 3;
+  string operation = 4;
+  string service = 5;
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Duration duration = 7;
+  SpanStatus status = 8;
+  map<string, string> attributes = 9;
+  repeated SpanEvent events = 10;
+}
+
+enum SpanStatus {
+  SPAN_STATUS_UNKNOWN = 0;
+  SPAN_STATUS_OK = 1;
+  SPAN_STATUS_ERROR = 2;
+}
+
+message SpanEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  string name = 2;
+  map<string, string> attributes = 3;
+}

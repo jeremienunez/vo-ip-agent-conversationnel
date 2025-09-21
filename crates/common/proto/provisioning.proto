@@ -1,0 +1,384 @@
+syntax = "proto3";
+
+package voip.provisioning;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Provisioning Service - manage users, devices, trunks
+service ProvisioningService {
+  // User management
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // Device management
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+  rpc GetDevice(GetDeviceRequest) returns (GetDeviceResponse);
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+
+  // Trunk management
+  rpc CreateTrunk(CreateTrunkRequest) returns (CreateTrunkResponse);
+  rpc UpdateTrunk(UpdateTrunkRequest) returns (UpdateTrunkResponse);
+  rpc DeleteTrunk(DeleteTrunkRequest) returns (DeleteTrunkResponse);
+  rpc GetTrunk(GetTrunkRequest) returns (GetTrunkResponse);
+  rpc ListTrunks(ListTrunksRequest) returns (ListTrunksResponse);
+
+  // Queue management
+  rpc CreateQueue(CreateQueueRequest) returns (CreateQueueResponse);
+  rpc UpdateQueue(UpdateQueueRequest) returns (UpdateQueueResponse);
+  rpc DeleteQueue(DeleteQueueRequest) returns (DeleteQueueResponse);
+  rpc GetQueue(GetQueueRequest) returns (GetQueueResponse);
+  rpc ListQueues(ListQueuesRequest) returns (ListQueuesResponse);
+}
+
+// User Management
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string extension = 6;
+  UserRole role = 7;
+  UserStatus status = 8;
+  repeated string skills = 9;
+  map<string, string> attributes = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+enum UserRole {
+  ROLE_UNKNOWN = 0;
+  ROLE_USER = 1;
+  ROLE_AGENT = 2;
+  ROLE_SUPERVISOR = 3;
+  ROLE_ADMIN = 4;
+}
+
+enum UserStatus {
+  STATUS_UNKNOWN = 0;
+  STATUS_ACTIVE = 1;
+  STATUS_INACTIVE = 2;
+  STATUS_SUSPENDED = 3;
+  STATUS_DELETED = 4;
+}
+
+message CreateUserRequest {
+  User user = 1;
+  string password = 2;
+}
+
+message CreateUserResponse {
+  bool success = 1;
+  string user_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  User user = 2;
+  string password = 3;  // Optional password update
+}
+
+message UpdateUserResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteUserRequest {
+  string user_id = 1;
+  bool soft_delete = 2;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+  voip.common.Error error = 2;
+}
+
+message ListUsersRequest {
+  voip.common.PageRequest page = 1;
+  UserStatus filter_status = 2;
+  UserRole filter_role = 3;
+  string search = 4;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+// Device Management
+message Device {
+  string id = 1;
+  string user_id = 2;
+  string name = 3;
+  DeviceType type = 4;
+  string mac_address = 5;
+  string ip_address = 6;
+  string user_agent = 7;
+  voip.common.SipUri sip_uri = 8;
+  string auth_username = 9;
+  DeviceStatus status = 10;
+  map<string, string> settings = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  google.protobuf.Timestamp last_seen = 14;
+}
+
+enum DeviceType {
+  DEVICE_UNKNOWN = 0;
+  DEVICE_SOFTPHONE = 1;
+  DEVICE_DESKPHONE = 2;
+  DEVICE_MOBILE = 3;
+  DEVICE_GATEWAY = 4;
+  DEVICE_FAX = 5;
+}
+
+enum DeviceStatus {
+  DEVICE_STATUS_UNKNOWN = 0;
+  DEVICE_STATUS_REGISTERED = 1;
+  DEVICE_STATUS_UNREGISTERED = 2;
+  DEVICE_STATUS_DISABLED = 3;
+}
+
+message CreateDeviceRequest {
+  Device device = 1;
+  string auth_password = 2;
+}
+
+message CreateDeviceResponse {
+  bool success = 1;
+  string device_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateDeviceRequest {
+  string device_id = 1;
+  Device device = 2;
+  string auth_password = 3;  // Optional password update
+}
+
+message UpdateDeviceResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteDeviceRequest {
+  string device_id = 1;
+}
+
+message DeleteDeviceResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message GetDeviceRequest {
+  string device_id = 1;
+}
+
+message GetDeviceResponse {
+  Device device = 1;
+  voip.common.Error error = 2;
+}
+
+message ListDevicesRequest {
+  voip.common.PageRequest page = 1;
+  string user_id = 2;
+  DeviceStatus filter_status = 3;
+  DeviceType filter_type = 4;
+}
+
+message ListDevicesResponse {
+  repeated Device devices = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+// Trunk Management
+message Trunk {
+  string id = 1;
+  string name = 2;
+  string provider = 3;
+  TrunkType type = 4;
+  string host = 5;
+  uint32 port = 6;
+  TrunkProtocol protocol = 7;
+  uint32 max_channels = 8;
+  TrunkStatus status = 9;
+  map<string, string> auth = 10;
+  map<string, string> settings = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+enum TrunkType {
+  TRUNK_UNKNOWN = 0;
+  TRUNK_SIP = 1;
+  TRUNK_IAX = 2;
+  TRUNK_PRI = 3;
+  TRUNK_ANALOG = 4;
+}
+
+enum TrunkProtocol {
+  PROTOCOL_UNKNOWN = 0;
+  PROTOCOL_UDP = 1;
+  PROTOCOL_TCP = 2;
+  PROTOCOL_TLS = 3;
+  PROTOCOL_WS = 4;
+  PROTOCOL_WSS = 5;
+}
+
+enum TrunkStatus {
+  TRUNK_STATUS_UNKNOWN = 0;
+  TRUNK_STATUS_ACTIVE = 1;
+  TRUNK_STATUS_INACTIVE = 2;
+  TRUNK_STATUS_MAINTENANCE = 3;
+}
+
+message CreateTrunkRequest {
+  Trunk trunk = 1;
+}
+
+message CreateTrunkResponse {
+  bool success = 1;
+  string trunk_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateTrunkRequest {
+  string trunk_id = 1;
+  Trunk trunk = 2;
+}
+
+message UpdateTrunkResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteTrunkRequest {
+  string trunk_id = 1;
+}
+
+message DeleteTrunkResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message GetTrunkRequest {
+  string trunk_id = 1;
+}
+
+message GetTrunkResponse {
+  Trunk trunk = 1;
+  voip.common.Error error = 2;
+}
+
+message ListTrunksRequest {
+  voip.common.PageRequest page = 1;
+  TrunkStatus filter_status = 2;
+  TrunkType filter_type = 3;
+}
+
+message ListTrunksResponse {
+  repeated Trunk trunks = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
+
+// Queue Management
+message Queue {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  QueueStrategy strategy = 4;
+  uint32 max_wait_time = 5;
+  uint32 max_queue_size = 6;
+  repeated string agent_ids = 7;
+  repeated string skill_requirements = 8;
+  map<string, string> settings = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+enum QueueStrategy {
+  QUEUE_STRATEGY_UNKNOWN = 0;
+  QUEUE_STRATEGY_RING_ALL = 1;
+  QUEUE_STRATEGY_ROUND_ROBIN = 2;
+  QUEUE_STRATEGY_LEAST_RECENT = 3;
+  QUEUE_STRATEGY_FEWEST_CALLS = 4;
+  QUEUE_STRATEGY_RANDOM = 5;
+  QUEUE_STRATEGY_SKILL_BASED = 6;
+}
+
+message CreateQueueRequest {
+  Queue queue = 1;
+}
+
+message CreateQueueResponse {
+  bool success = 1;
+  string queue_id = 2;
+  voip.common.Error error = 3;
+}
+
+message UpdateQueueRequest {
+  string queue_id = 1;
+  Queue queue = 2;
+}
+
+message UpdateQueueResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message DeleteQueueRequest {
+  string queue_id = 1;
+}
+
+message DeleteQueueResponse {
+  bool success = 1;
+  voip.common.Error error = 2;
+}
+
+message GetQueueRequest {
+  string queue_id = 1;
+}
+
+message GetQueueResponse {
+  Queue queue = 1;
+  QueueStatus status = 2;
+  voip.common.Error error = 3;
+}
+
+message QueueStatus {
+  uint32 calls_waiting = 1;
+  uint32 agents_available = 2;
+  uint32 agents_busy = 3;
+  uint32 longest_wait_time = 4;
+  double average_wait_time = 5;
+}
+
+message ListQueuesRequest {
+  voip.common.PageRequest page = 1;
+  string filter_name = 2;
+}
+
+message ListQueuesResponse {
+  repeated Queue queues = 1;
+  voip.common.PageInfo page_info = 2;
+  voip.common.Error error = 3;
+}
